@@ -1,4 +1,5 @@
-const BASE_URL = 'https://g575dfbc1dbf538-dev.adb.ap-seoul-1.oraclecloudapps.com/ords/ad/v1/ad/';
+const BASE_URL = 'https://g01c8462bed7f63-product.adb.ap-seoul-1.oraclecloudapps.com/ords/podo/v2/ad/';
+
 const DEVICE_URL = 'devices';
 const POSITION_URL = 'devices/position';
 const POSITION_LOCKED_URL = 'devices/position/locked';

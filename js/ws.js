@@ -1,4 +1,4 @@
-const host = 'www.coderslab.co.kr';
+const host = 'cs.raiid.ai';
 const port = 9001;
 let mqttRetryInterval = 1000;
 
