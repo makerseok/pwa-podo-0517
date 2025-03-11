@@ -338,6 +338,13 @@ player.on('playing', function () {
   const currentIndex = this.playlist.currentIndex();
   const currentItem = playlist[currentIndex];
   const { URL_YN: urlYn, FILE_ID: fileId, DEVICE_URL: deviceUrl } = currentItem.report;
+  console.log('######### Additional console logs for debug START #########');
+  console.log(`current playlist: ${playlist}`);
+  console.log(`current index: ${currentIndex}`);
+  console.log(`current item: ${currentItem}`);
+  console.log(`nexxt index: ${this.playlist.nextIndex()}`);
+  console.log(`next item: ${playlist[this.playlist.nextIndex()]}`);
+  console.log('######### Additional console logs for debug END #########');
   console.log(`fid=${urlYn === 'Y' ? deviceUrl : fileId}`);
 });
 
