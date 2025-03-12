@@ -345,10 +345,12 @@ player.on('playing', function () {
   console.log(currentIndex);
   console.log(`current item:`);
   console.log(currentItem);
-  console.log(`nexxt index:`);
+  console.log(`next index:`);
   console.log(this.playlist.nextIndex());
   console.log(`next item:`);
   console.log(playlist[this.playlist.nextIndex()]);
+  console.log(`current playlist.repeat option:`);
+  console.log(this.playlist.repeat());
   console.log('######### Additional console logs for debug END #########');
   console.log(`fid=${urlYn === 'Y' ? deviceUrl : fileId}`);
 });
