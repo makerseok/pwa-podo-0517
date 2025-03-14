@@ -349,6 +349,8 @@ player.on('playing', function () {
   console.log(this.playlist.nextIndex());
   console.log(`next item:`);
   console.log(playlist[this.playlist.nextIndex()]);
+  console.log(`set playlist.repeat option to true`);
+  console.log(this.playlist.repeat(true));
   console.log(`current playlist.repeat option:`);
   console.log(this.playlist.repeat());
   console.log('######### Additional console logs for debug END #########');
