@@ -521,6 +521,7 @@ async function schedulePlaylists(playlists, currentTime) {
     }
 
     const startDate = new Date(playlist.start);
+    const endDate = new Date(playlist.end);
     const hhMMssEnd = gethhMMss(new Date(playlist.end));
 
     // 1) 새벽(dawn) 처리
