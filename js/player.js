@@ -217,6 +217,12 @@ player.ready(async function () {
   player.cpadJobs = [];
   player.playlistQueue = [];
   player.externalContents = {};
+  // 마지막 재생 완료 시각 저장
+  player.lastPlayOn = null;
+  // categoryId별 healthCheck 크론(job) 보관
+  player.healthCheckJobs = {};
+  // categoryId별 healthSchedule 트리거(job) 보관
+  player.healthScheduleJobs = {};
   console.log('player ready');
 
   const params = new URLSearchParams(location.search);
@@ -587,6 +593,9 @@ async function addReport(currentItem) {
   console.log('report', report);
   const reportDB = await db.open();
   if (report.PLAY_ON) {
+    console.debug(`[addReport] PLAY_ON 기록: ${addHyphen(report.PLAY_ON)}`);
+    // player에도 보관
+    player.lastPlayOn = addHyphen(report.PLAY_ON);
     await reportDB.reports.add(report);
   }
 
