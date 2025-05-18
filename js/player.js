@@ -593,9 +593,10 @@ async function addReport(currentItem) {
   console.log('report', report);
   const reportDB = await db.open();
   if (report.PLAY_ON) {
-    console.debug(`[addReport] PLAY_ON 기록: ${addHyphen(report.PLAY_ON)}`);
+    const lastPlayOn = addHyphen(getFormattedDate(new Date()));
+    console.debug(`[addReport] 재생 완료 일자: ${lastPlayOn}`);
     // player에도 보관
-    player.lastPlayOn = addHyphen(report.PLAY_ON);
+    player.lastPlayOn = lastPlayOn;
     await reportDB.reports.add(report);
   }
 
