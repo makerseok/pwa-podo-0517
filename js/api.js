@@ -570,21 +570,8 @@ async function schedulePlaylists(playlists, currentTime) {
       initPlayerPlaylist(playlist.files);
       player.cradJobs.push(scheduleOff(hhMMssEnd));
 
-      // 즉시 healthCheck 시작
-      if (!player.healthCheckJobs[playlist.categoryId]) {
-        console.debug(`[healthCheck] 즉시 시작: category=${playlist.categoryId}`);
-        player.healthCheckJobs[playlist.categoryId] = Cron('*/1 * * * *', healthCheck);
-      }
-      // 종료 시점에 healthCheck 중지 예약
-      const stopNow = Cron(endDate, () => {
-        const hc = player.healthCheckJobs[playlist.categoryId];
-        if (hc) {
-          console.debug(`[healthCheck] 현재구간 중지: category=${playlist.categoryId}`);
-          hc.stop();
-          delete player.healthCheckJobs[playlist.categoryId];
-        }
-      });
-      player.healthScheduleJobs[`${playlist.categoryId}_stopNow`] = stopNow;
+      // 지금 시점부터 +1분 후에 healthCheck 시작
+      scheduleHealth(new Date(), endDate);
     }
     if (currentTime < playlist.start) {
       console.debug('[미래 스케줄]');
