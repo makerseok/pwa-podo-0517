@@ -290,8 +290,9 @@ function getVideoUrl(ads) {
 async function initPlayer(crads, device, sudo = false) {
   player.playlist([]);
   const { code, message, device_id, company_id, ...deviceInfo } = device;
-  const { on, off, top, left, width, height, locked, call_time } = deviceInfo;
+  const { on, off, top, left, width, height, locked, call_time, reload_yn } = deviceInfo;
   player.locked = locked === 'Y' ? true : false;
+  player.reload_yn = reload_yn === 'N' ? false : true;
   const pos = { top, left, width, height };
   player.position = pos;
   player.isEnd = false;
@@ -444,6 +445,12 @@ const scheduleOnOff = (on, off) => {
  * 1분마다 실행되는 healthCheck 함수
  */
 function healthCheck() {
+  // 0) reload_yn 플래그가 false면 무조건 스킵
+  if (!player.reload_yn) {
+    console.debug('[healthCheck] reload_yn=false → 스킵');
+    return;
+  }
+
   console.debug('[healthCheck] 실행', {
     type: player.type,
     runon: player.runon,
@@ -455,20 +462,22 @@ function healthCheck() {
   // rad 재생 중이 아니면 종료
   if (player.type !== 'rad') return;
 
-  const nowSec = Date.now() / 1000;
+  // PLAY_ON 기록 없으면 즉시 reload
+  if (!player.lastPlayOn) {
+    console.error('[healthCheck] PLAY_ON 없음 → reload');
+    location.reload();
+    return;
+  }
 
   // 마지막 PLAY_ON으로부터 60초 지났으면 reload
-  if (player.lastPlayOn) {
-    const lastSec = new Date(player.lastPlayOn).getTime() / 1000;
-    if (nowSec - lastSec > 60) {
-      console.error('[healthCheck] Playback stuck 감지, 리로드');
-      location.reload();
-    } else {
-      console.debug(`[healthCheck] Player 정상 동작 중, lastPlayOn: ${player.lastPlayOn}`);
-    }
-  } else {
-    console.error('[healthCheck] lastPlayOn 없음');
+  const nowSec = Date.now() / 1000;
+  const lastSec = new Date(player.lastPlayOn).getTime() / 1000;
+  const diff = nowSec - lastSec;
+  if (diff > 60) {
+    console.error(`[healthCheck] stuck( ${diff.toFixed(1)}s ) → reload`);
     location.reload();
+  } else {
+    console.debug(`[healthCheck] 정상( since PLAY_ON ${diff.toFixed(1)}s )`);
   }
 }
 
@@ -488,14 +497,22 @@ async function schedulePlaylists(playlists, currentTime) {
 
     // 헬스체크 트리거(startAt/stopAt)를 예약하는 헬퍼
     function scheduleHealth(startAt, stopAt) {
+      // 0) reload_yn이 꺼져 있어도 Cron 트리거만 등록해두고 실제 동작은 healthCheck()가 판단
+      const healthStart = new Date(startAt.getTime() + 60 * 1000);
+
+      console.debug(
+        `[scheduleHealth] 예약 start→ ${healthStart.toISOString()}`,
+        `stop→ ${stopAt.toISOString()}`
+      );
+
       // 1) startAt 시점: 1분마다 healthCheck() 실행
-      const startTrigger = Cron(startAt, () => {
+      const startTrigger = Cron(healthStart, () => {
         if (!player.healthCheckJobs[playlist.categoryId]) {
           console.debug(
-            `[healthCheck] 시작: category=${playlist.categoryId}`,
-            `@ ${startAt.toISOString()}`
+            `[healthCheck] 트리거 시작: category=${playlist.categoryId}`,
+            `@ ${healthStart.toISOString()}`
           );
-          player.healthCheckJobs[playlist.categoryId] = Cron('*/1 * * * *', healthCheck);
+          player.healthCheckJobs[playlist.categoryId] = Cron('6 * * * * *', healthCheck);
         }
       });
       player.healthScheduleJobs[`${playlist.categoryId}_start`] = startTrigger;
@@ -505,7 +522,7 @@ async function schedulePlaylists(playlists, currentTime) {
         const hc = player.healthCheckJobs[playlist.categoryId];
         if (hc) {
           console.debug(
-            `[healthCheck] 중지: category=${playlist.categoryId}`,
+            `[healthCheck] 트리거 중지: category=${playlist.categoryId}`,
             `@ ${stopAt.toISOString()}`
           );
           hc.stop();
