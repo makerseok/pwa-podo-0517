@@ -374,10 +374,21 @@ const removeDefaultJobs = () => {
  *
  */
 const removeCradJobs = () => {
+  // 1) 기존 cradJobs 전부 중지
   player.cradJobs.forEach(e => {
     e.stop();
   });
   player.cradJobs = [];
+
+  // 2) healthCheckJobs 전부 중지
+  Object.values(player.healthCheckJobs).forEach(hc => hc.stop());
+  player.healthCheckJobs = {};
+
+  // 3) healthScheduleJobs 전부 중지
+  Object.values(player.healthScheduleJobs).forEach(hs => hs.stop());
+  player.healthScheduleJobs = {};
+
+  console.debug('[removeCradJobs] 모든 cradJobs & health jobs 초기화 완료');
 };
 
 /**
@@ -430,6 +441,38 @@ const scheduleOnOff = (on, off) => {
 };
 
 /**
+ * 1분마다 실행되는 healthCheck 함수
+ */
+function healthCheck() {
+  console.debug('[healthCheck] 실행', {
+    type: player.type,
+    runon: player.runon,
+    runoff: player.runoff,
+    isEnd: player.isEnd,
+    lastPlayOn: player.lastPlayOn
+  });
+
+  // rad 재생 중이 아니면 종료
+  if (player.type !== 'rad') return;
+
+  const nowSec = Date.now() / 1000;
+
+  // 마지막 PLAY_ON으로부터 60초 지났으면 reload
+  if (player.lastPlayOn) {
+    const lastSec = new Date(player.lastPlayOn).getTime() / 1000;
+    if (nowSec - lastSec > 60) {
+      console.error('[healthCheck] Playback stuck 감지, 리로드');
+      location.reload();
+    } else {
+      console.debug(`[healthCheck] Player 정상 동작 중, lastPlayOn: ${player.lastPlayOn}`);
+    }
+  } else {
+    console.error('[healthCheck] lastPlayOn 없음');
+    location.reload();
+  }
+}
+
+/**
  * 카테고리별 데이터를 현재 시간별로 분류해서 스케쥴링
  *
  * @param { Object[] } playlists 카테고리별 비디오 데이터
@@ -437,17 +480,60 @@ const scheduleOnOff = (on, off) => {
  */
 async function schedulePlaylists(playlists, currentTime) {
   for (let playlist of playlists) {
-    console.log(currentTime, playlist.start, playlist.end, playlist.categoryName);
+    console.debug(
+      `[schedulePlaylists] category=${playlist.categoryId} name=${playlist.categoryName}`,
+      `start=${playlist.start}`,
+      `end=${playlist.end}`
+    );
+
+    // 헬스체크 트리거(startAt/stopAt)를 예약하는 헬퍼
+    function scheduleHealth(startAt, stopAt) {
+      // 1) startAt 시점: 1분마다 healthCheck() 실행
+      const startTrigger = Cron(startAt, () => {
+        if (!player.healthCheckJobs[playlist.categoryId]) {
+          console.debug(
+            `[healthCheck] 시작: category=${playlist.categoryId}`,
+            `@ ${startAt.toISOString()}`
+          );
+          player.healthCheckJobs[playlist.categoryId] = Cron('*/1 * * * *', healthCheck);
+        }
+      });
+      player.healthScheduleJobs[`${playlist.categoryId}_start`] = startTrigger;
+
+      // 2) stopAt 시점: healthCheck 중지 & 트리거 중지
+      const stopTrigger = Cron(stopAt, () => {
+        const hc = player.healthCheckJobs[playlist.categoryId];
+        if (hc) {
+          console.debug(
+            `[healthCheck] 중지: category=${playlist.categoryId}`,
+            `@ ${stopAt.toISOString()}`
+          );
+          hc.stop();
+          delete player.healthCheckJobs[playlist.categoryId];
+        }
+        const st = player.healthScheduleJobs[`${playlist.categoryId}_start`];
+        if (st) {
+          st.stop();
+          delete player.healthScheduleJobs[`${playlist.categoryId}_start`];
+        }
+      });
+      player.healthScheduleJobs[`${playlist.categoryId}_stop`] = stopTrigger;
+    }
+
     const startDate = new Date(playlist.start);
     const hhMMssEnd = gethhMMss(new Date(playlist.end));
+
+    // 1) 새벽(dawn) 처리
     if (player.isDawn && new Date(player.runon * 1000) > new Date(playlist.start)) {
-      const nextDayStart = formatDatePlayAtDawn(playlist.start);
-      console.log('Next Day Early Playlists');
+      const nextDayStartStr = formatDatePlayAtDawn(playlist.start);
+      const nextDayStart = new Date(nextDayStartStr);
+      console.debug('[dawn 처리] nextDayStart=', nextDayStartStr);
+
+      // overlappingDateIndex: 동일 next() 타임의 기존 job이 있으면 대체
       const overlappingDateIndex = player.cradJobs.findIndex((job, index) => {
-        return job.next().getTime() === nextDayStartDate.getTime() && job.isEnd;
+        return job.next().getTime() === nextDayStart.getTime() && job.isEnd;
       });
-      console.log(overlappingDateIndex);
-      const job = await scheduleVideo(nextDayStart, playlist.files, 'rad');
+      const job = await scheduleVideo(nextDayStartStr, playlist.files, 'rad');
       if (job) {
         if (overlappingDateIndex !== -1) {
           player.cradJobs[overlappingDateIndex].stop();
@@ -456,19 +542,37 @@ async function schedulePlaylists(playlists, currentTime) {
           player.cradJobs.push(job);
         }
         player.cradJobs.push(scheduleOff(hhMMssEnd));
+
+        // 헬스체크 트리거 예약
+        scheduleHealth(nextDayStart, endDate);
       }
     }
     if (currentTime >= playlist.start && currentTime < playlist.end) {
-      console.log('currentTime >= playlist.start && currentTime < playlist.end');
+      console.debug('[현재 재생 중 구간]');
       initPlayerPlaylist(playlist.files);
       player.cradJobs.push(scheduleOff(hhMMssEnd));
+
+      // 즉시 healthCheck 시작
+      if (!player.healthCheckJobs[playlist.categoryId]) {
+        console.debug(`[healthCheck] 즉시 시작: category=${playlist.categoryId}`);
+        player.healthCheckJobs[playlist.categoryId] = Cron('*/1 * * * *', healthCheck);
+      }
+      // 종료 시점에 healthCheck 중지 예약
+      const stopNow = Cron(endDate, () => {
+        const hc = player.healthCheckJobs[playlist.categoryId];
+        if (hc) {
+          console.debug(`[healthCheck] 현재구간 중지: category=${playlist.categoryId}`);
+          hc.stop();
+          delete player.healthCheckJobs[playlist.categoryId];
+        }
+      });
+      player.healthScheduleJobs[`${playlist.categoryId}_stopNow`] = stopNow;
     }
     if (currentTime < playlist.start) {
-      console.log('currentTime < playlist.start');
+      console.debug('[미래 스케줄]');
       const overlappingDateIndex = player.cradJobs.findIndex((job, index) => {
         return job.next().getTime() === startDate.getTime() && job.isEnd;
       });
-      console.log(overlappingDateIndex);
       const job = await scheduleVideo(playlist.start, playlist.files, 'rad');
       if (job) {
         if (overlappingDateIndex !== -1) {
@@ -478,6 +582,9 @@ async function schedulePlaylists(playlists, currentTime) {
           player.cradJobs.push(job);
         }
         player.cradJobs.push(scheduleOff(hhMMssEnd));
+
+        // 헬스체크 트리거 예약
+        scheduleHealth(startDate, endDate);
       }
     }
   }
